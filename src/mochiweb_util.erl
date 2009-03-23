@@ -605,8 +605,11 @@ test_parse_qs() ->
     parse_qs("foo=bar&baz=wibble+%0D%0A&z=1"),
   [{"foo", [{"bar", "1"}, {"baz", "2"}]}] =
     parse_qs("foo[bar]=1&foo[baz]=2"),
+<<<<<<< HEAD
   [{"foo[bar", "1"}] =
     parse_qs("foo[bar=1"),
+=======
+>>>>>>> parse params into nested proplists when given foo[baz]=1
   ok.
 
 test_complex_parse_qs() ->
