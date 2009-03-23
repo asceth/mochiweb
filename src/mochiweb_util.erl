@@ -205,7 +205,7 @@ parse_qs_key([?LBRACE | Rest], Parents, Acc) ->
     {valid, Key, Rest1} ->
       parse_qs_key(Rest1, [qs_revdecode(Acc) | Parents], Key);
     {invalid, KeyRest, Rest1} ->
-      {Parents, qs_revdecode([KeyRest | Acc]), Rest1}
+      {Parents, qs_revdecode(KeyRest ++ [?LBRACE] ++ Acc), Rest1}
   end;
 parse_qs_key([C | Rest], Parents, Acc) ->
   parse_qs_key(Rest, Parents, [C | Acc]).
@@ -605,6 +605,8 @@ test_parse_qs() ->
     parse_qs("foo=bar&baz=wibble+%0D%0A&z=1"),
   [{"foo", [{"bar", "1"}, {"baz", "2"}]}] =
     parse_qs("foo[bar]=1&foo[baz]=2"),
+  [{"foo[bar", "1"}] =
+    parse_qs("foo[bar=1"),
   ok.
 
 test_complex_parse_qs() ->
