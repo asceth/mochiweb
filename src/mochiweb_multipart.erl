@@ -254,7 +254,8 @@ fake_request(Socket, ContentType, Length) ->
                          {1,1},
                          mochiweb_headers:make(
                            [{"content-type", ContentType},
-                            {"content-length", Length}])).
+                            {"content-length", Length}]),
+                         false).
 
 test_callback(Expect, [Expect | Rest]) ->
     case Rest of

@@ -64,28 +64,37 @@ all_loaded(Base) ->
 
 %% @spec new_request({Socket, Request, Headers}) -> MochiWebRequest
 %% @doc Return a mochiweb_request data structure.
-new_request({Socket, {Method, {abs_path, Uri}, Version}, Headers}) ->
+new_request({Socket, {Method, {abs_path, Uri}, Version}, Headers, Ssl, OptsMod, ConnMod}) ->
     mochiweb_request:new(Socket,
                          Method,
                          Uri,
                          Version,
-                         mochiweb_headers:make(Headers));
+                         mochiweb_headers:make(Headers),
+                         Ssl,
+                         OptsMod,
+                         ConnMod);
 % this case probably doesn't "exist".
 new_request({Socket, {Method, {absoluteURI, _Protocol, _Host, _Port, Uri},
-                      Version}, Headers}) ->
+                      Version}, Headers, Ssl, OptsMods, ConnMod}) ->
     mochiweb_request:new(Socket,
                          Method,
                          Uri,
                          Version,
-                         mochiweb_headers:make(Headers));
+                         mochiweb_headers:make(Headers),
+                         Ssl,
+                         OptsMods,
+                         ConnMod);
 %% Request-URI is "*"
 %% From http://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1.2
-new_request({Socket, {Method, '*'=Uri, Version}, Headers}) ->
+new_request({Socket, {Method, '*'=Uri, Version}, Headers, Ssl, OptsMod, ConnMod}) ->
     mochiweb_request:new(Socket,
                          Method,
                          Uri,
                          Version,
-                         mochiweb_headers:make(Headers)).
+                         mochiweb_headers:make(Headers),
+                         Ssl,
+                         OptsMod,
+                         ConnMod).
 
 %% @spec new_response({Request, integer(), Headers}) -> MochiWebResponse
 %% @doc Return a mochiweb_response data structure.
@@ -97,7 +106,7 @@ new_response({Request, Code, Headers}) ->
 %% Internal API
 
 test_request() ->
-    R = mochiweb_request:new(z, z, "/foo/bar/baz%20wibble+quux?qs=2", z, []),
+    R = mochiweb_request:new(z, z, "/foo/bar/baz%20wibble+quux?qs=2", z, [], false, inets, gen_tcp),
     "/foo/bar/baz wibble quux" = R:get(path),
     ok.
 

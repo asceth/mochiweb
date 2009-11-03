@@ -3,7 +3,7 @@
 
 %% @doc MochiWeb HTTP Request abstraction.
 
--module(mochiweb_request, [Socket, Method, RawPath, Version, Headers]).
+-module(mochiweb_request, [Socket, Method, RawPath, Version, Headers, Ssl, OptsMod, ConnMod]).
 -author('bob@mochimedia.com').
 
 -include_lib("kernel/include/file.hrl").
@@ -58,53 +58,53 @@ get_primary_header_value(K) ->
 %% @spec get(field()) -> term()
 %% @doc Return the internal representation of the given field.
 get(socket) ->
-    Socket;
+  Socket;
 get(method) ->
-    Method;
+  Method;
 get(raw_path) ->
-    RawPath;
+  RawPath;
 get(version) ->
-    Version;
+  Version;
 get(headers) ->
-    Headers;
+  Headers;
 get(peer) ->
-    case inet:peername(Socket) of
-        {ok, {Addr={10, _, _, _}, _Port}} ->
-            case get_header_value("x-forwarded-for") of
-                undefined ->
-                    inet_parse:ntoa(Addr);
-                Hosts ->
-                    string:strip(lists:last(string:tokens(Hosts, ",")))
-            end;
-        {ok, {{127, 0, 0, 1}, _Port}} ->
-            case get_header_value("x-forwarded-for") of
-                undefined ->
-                    "127.0.0.1";
-                Hosts ->
-                    string:strip(lists:last(string:tokens(Hosts, ",")))
-            end;
-        {ok, {Addr, _Port}} ->
-            inet_parse:ntoa(Addr)
-    end;
+  case OptsMod:peername(Socket) of
+    {ok, {Addr={10, _, _, _}, _Port}} ->
+      case get_header_value("x-forwarded-for") of
+        undefined ->
+          inet_parse:ntoa(Addr);
+        Hosts ->
+          string:strip(lists:last(string:tokens(Hosts, ",")))
+      end;
+    {ok, {{127, 0, 0, 1}, _Port}} ->
+      case get_header_value("x-forwarded-for") of
+        undefined ->
+          "127.0.0.1";
+        Hosts ->
+          string:strip(lists:last(string:tokens(Hosts, ",")))
+      end;
+    {ok, {Addr, _Port}} ->
+      inet_parse:ntoa(Addr)
+  end;
 get(path) ->
-    case erlang:get(?SAVE_PATH) of
-        undefined ->
-            {Path0, _, _} = mochiweb_util:urlsplit_path(RawPath),
-            Path = mochiweb_util:unquote(Path0),
-            put(?SAVE_PATH, Path),
-            Path;
-        Cached ->
-            Cached
-    end;
+  case erlang:get(?SAVE_PATH) of
+    undefined ->
+      {Path0, _, _} = mochiweb_util:urlsplit_path(RawPath),
+      Path = mochiweb_util:unquote(Path0),
+      put(?SAVE_PATH, Path),
+      Path;
+    Cached ->
+      Cached
+  end;
 get(body_length) ->
-    erlang:get(?SAVE_BODY_LENGTH);
+  erlang:get(?SAVE_BODY_LENGTH);
 get(range) ->
-    case get_header_value(range) of
-        undefined ->
-            undefined;
-        RawRange ->
-            parse_range_request(RawRange)
-    end.
+  case get_header_value(range) of
+    undefined ->
+      undefined;
+    RawRange ->
+      parse_range_request(RawRange)
+  end.
 
 %% @spec dump() -> {mochiweb_request, [{atom(), term()}]}
 %% @doc Dump the internal representation to a "human readable" set of terms
@@ -118,30 +118,30 @@ dump() ->
 %% @spec send(iodata()) -> ok
 %% @doc Send data over the socket.
 send(Data) ->
-    case gen_tcp:send(Socket, Data) of
-        ok ->
-            ok;
-        _ ->
-            exit(normal)
-    end.
+  case ConnMod:send(Socket, Data) of
+      ok ->
+      ok;
+    _ ->
+      exit(normal)
+  end.
 
 %% @spec recv(integer()) -> binary()
 %% @doc Receive Length bytes from the client as a binary, with the default
 %%      idle timeout.
 recv(Length) ->
-    recv(Length, ?IDLE_TIMEOUT).
+  recv(Length, ?IDLE_TIMEOUT).
 
 %% @spec recv(integer(), integer()) -> binary()
 %% @doc Receive Length bytes from the client as a binary, with the given
 %%      Timeout in msec.
 recv(Length, Timeout) ->
-    case gen_tcp:recv(Socket, Length, Timeout) of
-        {ok, Data} ->
-            put(?SAVE_RECV, true),
-            Data;
-        _ ->
-            exit(normal)
-    end.
+  case ConnMod:recv(Socket, Length, Timeout) of
+    {ok, Data} ->
+      put(?SAVE_RECV, true),
+      Data;
+    _ ->
+      exit(normal)
+  end.
 
 %% @spec body_length() -> undefined | chunked | unknown_transfer_encoding | integer()
 %% @doc  Infer body length from transfer-encoding and content-length headers.
@@ -469,49 +469,49 @@ stream_unchunked_body(Length, MaxChunkSize, Fun, FunState) ->
 %% @spec read_chunk_length() -> integer()
 %% @doc Read the length of the next HTTP chunk.
 read_chunk_length() ->
-    inet:setopts(Socket, [{packet, line}]),
-    case gen_tcp:recv(Socket, 0, ?IDLE_TIMEOUT) of
-        {ok, Header} ->
-            inet:setopts(Socket, [{packet, raw}]),
-            Splitter = fun (C) ->
-                               C =/= $\r andalso C =/= $\n andalso C =/= $
-                       end,
-            {Hex, _Rest} = lists:splitwith(Splitter, binary_to_list(Header)),
-            mochihex:to_int(Hex);
-        _ ->
-            exit(normal)
-    end.
+  OptsMod:setopts(Socket, [{packet, line}]),
+  case ConnMod:recv(Socket, 0, ?IDLE_TIMEOUT) of
+    {ok, Header} ->
+      OptsMod:setopts(Socket, [{packet, raw}]),
+      Splitter = fun (C) ->
+                     C =/= $\r andalso C =/= $\n andalso C =/= $
+                 end,
+      {Hex, _Rest} = lists:splitwith(Splitter, binary_to_list(Header)),
+      mochihex:to_int(Hex);
+    _ ->
+      exit(normal)
+  end.
 
 %% @spec read_chunk(integer()) -> Chunk::binary() | [Footer::binary()]
 %% @doc Read in a HTTP chunk of the given length. If Length is 0, then read the
 %%      HTTP footers (as a list of binaries, since they're nominal).
 read_chunk(0) ->
-    inet:setopts(Socket, [{packet, line}]),
-    F = fun (F1, Acc) ->
-                case gen_tcp:recv(Socket, 0, ?IDLE_TIMEOUT) of
-                    {ok, <<"\r\n">>} ->
-                        Acc;
-                    {ok, Footer} ->
-                        F1(F1, [Footer | Acc]);
-                    _ ->
-                        exit(normal)
-                end
-        end,
-    Footers = F(F, []),
-    inet:setopts(Socket, [{packet, raw}]),
-    Footers;
+  OptsMod:setopts(Socket, [{packet, line}]),
+  F = fun (F1, Acc) ->
+          case ConnMod:recv(Socket, 0, ?IDLE_TIMEOUT) of
+            {ok, <<"\r\n">>} ->
+              Acc;
+            {ok, Footer} ->
+              F1(F1, [Footer | Acc]);
+            _ ->
+              exit(normal)
+          end
+      end,
+  Footers = F(F, []),
+  OptsMod:setopts(Socket, [{packet, raw}]),
+  Footers;
 read_chunk(Length) ->
-    case gen_tcp:recv(Socket, 2 + Length, ?IDLE_TIMEOUT) of
-        {ok, <<Chunk:Length/binary, "\r\n">>} ->
-            Chunk;
-        _ ->
-            exit(normal)
-    end.
+  case ConnMod:recv(Socket, 2 + Length, ?IDLE_TIMEOUT) of
+    {ok, <<Chunk:Length/binary, "\r\n">>} ->
+      Chunk;
+    _ ->
+      exit(normal)
+  end.
 
 read_sub_chunks(Length, MaxChunkSize, Fun, FunState) when Length > MaxChunkSize ->
-    Bin = recv(MaxChunkSize),
-    NewState = Fun({size(Bin), Bin}, FunState),
-    read_sub_chunks(Length - MaxChunkSize, MaxChunkSize, Fun, NewState);
+  Bin = recv(MaxChunkSize),
+  NewState = Fun({size(Bin), Bin}, FunState),
+  read_sub_chunks(Length - MaxChunkSize, MaxChunkSize, Fun, NewState);
 
 read_sub_chunks(Length, _MaxChunkSize, Fun, FunState) ->
     Fun({Length, read_chunk(Length)}, FunState).
